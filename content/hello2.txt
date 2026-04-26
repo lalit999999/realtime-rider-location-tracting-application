@@ -1,0 +1,94 @@
+i am trying to make a realtime rider tracking application.
+Here are the steps I am following to set up the project:
+
+    1. npm i
+    2. install express types and @types/node for typescript support 
+    3. create a server and listen on port 3000
+    4. make a io server 
+    5. get healthy endpoint working
+
+install leaflet and @types/leaflet for typescript support
+
+add a map in the frontend and display the rider's location on the map using the data received from the backend through socket.io.(use leaflet to display the map and the rider's location)
+
+
+make a function to get user current location name : getUserCurrentLocation (return a promise) and use it to get the user's current location and display it on the map as well.
+console.log the user's current location in the console for debugging purposes.
+
+how i make a marker for the rider's location and update it in real-time as the rider moves.(every 10 seconds update the rider's location and move the marker on the map accordingly)
+
+create a socket server and emit the location
+
+make a connetion to the socket server from the frontend and listen for location updates to update the marker on the map in real-time.console.log also.
+
+make a docker compose file to run the backend and frontend together. use kafka image on port 9092
+
+install kafkajs
+
+make a kafka client 
+      kafkacliend = new Kafka({
+        clientId: 'my-app',
+        brokers: ['localhost:9092']
+      })
+
+make a kafka admin
+    import the client and create an admin instance
+    setup(){
+        const admin = kafkaclient.admin()
+        await admin.connect()
+
+        await admin.createTopics({
+            topics: [
+                {
+                    topic: 'location-updates',
+                    numPartitions: 2
+                }
+            ]
+        })
+        await admin.disconnect()
+    }
+    setup()
+
+test it ========
+
+import the kafka client on backend and create a producer instance
+    const producer = kafkaclient.producer()
+    await producer.connect()
+
+send a message to the topic 'location-updates' every 10 seconds with the rider's location data
+    awaitkafkaProducer.send({
+        topic: 'location-updates',
+        messages: [
+            { value: JSON.stringify({ lat: 40.7128, lng: -74.0060 }) }
+        ]
+    })
+
+run a consumer to consume messages from the 'location-updates' topic and log the received location data to the console
+    const consumer = kafkaclient.consumer({ groupId: 'socket-server${PORT}' })
+    await consumer.connect()
+    await consumer.subscribe({ topic: 'location-updates', fromBeginning: true })
+
+    await consumer.run({
+        eachMessage: async ({ topic, partition, message }) => {
+            console.log({
+                value: message.value.toString(),
+            })
+            io.emit('location-update', JSON.parse(message.value.toString()))
+            await heartbeat();
+        },
+    })
+
+============ test it ===========
+
+make a remote marker on frontend update data on socket event and move the marker on the map accordingly.
+update the marker and save in the remotemarker map
+
+
+===== you can make a tunnel on cloudflare to test the application on your local machine and share the link with me to test it on my end as well.
+
+
+
+
+
+
+implement this on the frontend (index.html) and backend(index.js and you can make files for kafka integration)

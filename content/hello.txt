@@ -1,0 +1,30 @@
+the zero copy of kafka consumer
+consumer group id 
+message.producer
+topic : "riders-updates"
+partition : 2
+message : {}
+
+why partition is important in kafka consumer
+answer : partition is important in kafka consumer because it allows for parallel processing of messages. Each partition can be consumed by a separate consumer, which increases the throughput and scalability of the system. Additionally, partitions help to maintain the order of messages within a topic, as messages within a partition are processed in the order they were produced.
+
+
+there are multiple DB servers and we want to update the same record in all the servers.
+
+
+----------------------------------------------------------------------------------------------------------------------------------------
+consumer groups : 
+Consumer groups are a way to allow multiple consumers to work together to consume messages from a Kafka topic. Each consumer in a consumer group is assigned a unique group ID, and Kafka ensures that each message is delivered to only one consumer within the group. This allows for load balancing and fault tolerance, as if one consumer fails, the remaining consumers can continue processing messages without interruption. Consumer groups also enable parallel processing of messages, as multiple consumers can consume messages from different partitions of the same topic simultaneously.
+
+
+
+topics1: [
+    partition1:
+    partition2:
+    partition3:
+    partition4:
+]
+
+
+
+===========================================================================================================================================================================================================================================================================================================================================
