@@ -1,35 +1,33 @@
-const express = require('express');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
+import http from 'http';
+import express from 'express';
+import { Server } from 'socket.io';
+import path from 'path';
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+async function main() {
+    const PORT = process.env.PORT ?? 8000;
 
-// Middleware
-app.use(express.json());
+    const app = express();
+    const server = http.createServer(app);
+    const io = new Server();
+    io.attach(server);
 
-// Health endpoint
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok', message: 'Server is healthy' });
-});
+    io.on('connection', (socket) => {
+        console.log('a user connected', { id: socket.id });
+        socket.on('client:location:update', (LocationData) => {
+            const { latitude, longitude } = LocationData;
+            console.log('Received location update from client', { id: socket.id, LocationData });
+        })
+    })
 
-// Socket.IO connection
-io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+    app.use(express.static(path.resolve(__dirname, 'public')))
 
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+    app.get('/health', (req, res) => {
+        return res.json({ status: 'ok' })
+
+    })
+    server.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
     });
-});
+}
 
-// Start server
-const PORT = 3000;
-httpServer.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+main()
