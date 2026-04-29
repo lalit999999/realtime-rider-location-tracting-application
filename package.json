@@ -1,4 +1,13 @@
 {
+  "name": "rider-location-tracking",
+  "version": "1.0.0",
+  "description": "Real-time rider location tracking application using Express and Socket.IO",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
   "dependencies": {
     "express": "^5.2.1",
     "socket.io": "^4.8.3"

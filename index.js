@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 
 async function main() {
-    const PORT = process.env.PORT ?? 8000;
+    const PORT = process.env.PORT ?? 3300;
 
     const app = express();
     const server = http.createServer(app);
@@ -19,7 +19,7 @@ async function main() {
         })
     })
 
-    app.use(express.static(path.resolve(__dirname, 'public')))
+    // app.use(express.static(path.resolve(__dirname, 'public')))
 
     app.get('/health', (req, res) => {
         return res.json({ status: 'ok' })
