@@ -95,8 +95,6 @@
       margin-right: 6px;
     }
 
-    
-
     .sidebar-footer {
       margin-top: auto;
       width: 100%;
@@ -188,6 +186,28 @@
             <span class="label">Email:</span>
             <span id="userEmail">loading...</span>
           </div>
+        </div>
+
+        <!-- Location status and controls -->
+        <div
+          id="locationStatus"
+          style="margin-top: 12px; text-align: center; color: var(--muted)"
+        ></div>
+        <div style="margin-top: 8px">
+          <button
+            id="enableLocationBtn"
+            style="
+              display: none;
+              width: 100%;
+              padding: 10px;
+              border-radius: 12px;
+              border: 2px solid var(--border);
+              background: var(--surface-2);
+              font-weight: 700;
+            "
+          >
+            Enable location
+          </button>
         </div>
 
         <div class="sidebar-footer">
@@ -349,95 +369,193 @@
         });
       }
 
-      function getUserCurrentLocation() {
-        return new Promise((resolve, reject) => {
-          if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                const { latitude, longitude } = position.coords;
-                console.log("Current location obtained", {
-                  latitude,
-                  longitude,
-                });
-                // where i emit the location to server
-
-                resolve({ latitude, longitude }); // ✅ Resolve the Promise
-              },
-              (error) => {
-                console.error("Error obtaining location", error);
-                alert(
-                  "Unable to retrieve your location. Please allow location access and try again.",
-                );
-                reject(new Error("Unable to retrieve location")); // ✅ Reject the Promise
-              },
-              {
-                enableHighAccuracy: true,
-                timeout: 5000,
-                maximumAge: 0,
-              },
-            );
-          } else {
-            alert("Geolocation is not supported by your browser");
-            reject(new Error("Geolocation not supported")); // ✅ Reject if not supported
-          }
-        });
-      }
+      // Geolocation management: use watchPosition and an inline status UI instead of repeated alerts
       let mycurrentlocation = null;
       let lastSentLocationKey = null;
-      async function main() {
-        await loadAuthenticatedUser();
-        connectSocket();
+      let watchId = null;
 
-        setInterval(async () => {
-          let latitude;
-          let longitude;
+      function showLocationStatus(message, isError = false) {
+        const el = document.getElementById("locationStatus");
+        if (!el) return;
+        el.textContent = message;
+        el.style.color = isError ? "#b00020" : "var(--muted)";
+      }
 
-          try {
-            ({ latitude, longitude } = await getUserCurrentLocation());
-          } catch (error) {
-            console.error("Skipping location update:", error.message);
-            return;
-          }
+      function clearLocationStatus() {
+        const el = document.getElementById("locationStatus");
+        if (!el) return;
+        el.textContent = "";
+      }
 
-          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-            console.warn("Skipping invalid local location update", {
-              latitude,
-              longitude,
-            });
-            return;
-          }
+      function stopWatchPosition() {
+        if (watchId != null && "geolocation" in navigator) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+      }
 
-          const locationKey = `${latitude}:${longitude}`;
+      function startWatchPosition() {
+        if (!("geolocation" in navigator)) {
+          showLocationStatus(
+            "Geolocation is not supported by your browser",
+            true,
+          );
+          return;
+        }
 
-          if (lastSentLocationKey === locationKey) {
+        clearLocationStatus();
+
+        watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            // update marker and emit only when location changed
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
+              return;
+
+            const locationKey = `${latitude}:${longitude}`;
+            if (lastSentLocationKey === locationKey) {
+              if (!mycurrentlocation) {
+                mycurrentlocation = L.marker([latitude, longitude])
+                  .addTo(map)
+                  .bindPopup("You are here");
+              } else {
+                mycurrentlocation.setLatLng([latitude, longitude]);
+              }
+              return;
+            }
+
+            lastSentLocationKey = locationKey;
+
+            // emit to server
+            if (socket) {
+              socket.emit("client:location:update", {
+                userId: currentUser.userId,
+                latitude,
+                longitude,
+              });
+            }
+
             if (!mycurrentlocation) {
               mycurrentlocation = L.marker([latitude, longitude])
                 .addTo(map)
                 .bindPopup("You are here");
+              // pan map to user on first locate
+              map.setView([latitude, longitude], 15);
             } else {
               mycurrentlocation.setLatLng([latitude, longitude]);
             }
-
-            return;
-          }
-
-          lastSentLocationKey = locationKey;
-
-          socket.emit("client:location:update", {
-            userId: currentUser.userId,
-            latitude,
-            longitude,
-          });
-
-          if (!mycurrentlocation) {
-            mycurrentlocation = L.marker([latitude, longitude])
-              .addTo(map)
-              .bindPopup("You are here");
-          } else {
-            mycurrentlocation.setLatLng([latitude, longitude]);
-          }
-        }, 5 * 1000);
+          },
+          (error) => {
+            console.error("watchPosition error", error);
+            const btn = document.getElementById("enableLocationBtn");
+            if (error.code === 1) {
+              // PERMISSION_DENIED
+              showLocationStatus(
+                "Location permission denied. Enable location in your browser settings.",
+                true,
+              );
+              if (btn) btn.style.display = "inline-block";
+              stopWatchPosition();
+            } else if (error.code === 3) {
+              // TIMEOUT
+              showLocationStatus(
+                "Unable to get location (timeout). Will retry shortly.",
+              );
+              // keep watching; browser will attempt again
+            } else {
+              showLocationStatus("Unable to retrieve your location.");
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 10 * 1000,
+          },
+        );
       }
+
+      function requestLocationPermissionOnce() {
+        if (!("geolocation" in navigator)) {
+          showLocationStatus(
+            "Geolocation is not supported by your browser",
+            true,
+          );
+          return;
+        }
+
+        showLocationStatus("Requesting location permission...");
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            clearLocationStatus();
+            // start continuous watch after a successful prompt
+            startWatchPosition();
+          },
+          (error) => {
+            console.error("Permission request failed", error);
+            if (error.code === 1) {
+              showLocationStatus(
+                "Location permission denied. Enable it from browser settings.",
+                true,
+              );
+              const btn = document.getElementById("enableLocationBtn");
+              if (btn) btn.style.display = "inline-block";
+            } else {
+              showLocationStatus("Unable to retrieve your location.", true);
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10 * 1000, maximumAge: 0 },
+        );
+      }
+
+      async function main() {
+        await loadAuthenticatedUser();
+        connectSocket();
+
+        const enableBtn = document.getElementById("enableLocationBtn");
+        if (enableBtn) {
+          enableBtn.addEventListener("click", () => {
+            // user gesture to trigger permission prompt
+            requestLocationPermissionOnce();
+            enableBtn.style.display = "none";
+          });
+        }
+
+        // Use Permissions API when available to decide UX flow
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const status = await navigator.permissions.query({
+              name: "geolocation",
+            });
+            if (status.state === "granted") {
+              startWatchPosition();
+            } else if (status.state === "prompt") {
+              // show a visible control so user can trigger the permission prompt
+              showLocationStatus(
+                "Please enable location to share your position.",
+              );
+              if (enableBtn) enableBtn.style.display = "inline-block";
+            } else if (status.state === "denied") {
+              showLocationStatus(
+                "Location access is denied. Enable it from browser settings.",
+                true,
+              );
+              if (enableBtn) enableBtn.style.display = "inline-block";
+            }
+
+            // react to permission state changes
+            status.onchange = () => {
+              if (status.state === "granted") startWatchPosition();
+            };
+          } catch (err) {
+            // Permissions API may be unsupported or throw; fall back to showing enable button
+            if (enableBtn) enableBtn.style.display = "inline-block";
+          }
+        } else {
+          // No Permissions API - offer a button to request on user gesture
+          if (enableBtn) enableBtn.style.display = "inline-block";
+        }
+      }
+
       window.addEventListener("load", main);
     </script>
   </body>
