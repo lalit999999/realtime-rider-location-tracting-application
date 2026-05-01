@@ -18,8 +18,14 @@ const PORT = Number(process.env.PORT ?? 3300);
 const DB_URL = process.env.DB_URL;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const APP_BASE_URL = process.env.APP_BASE_URL ?? `http://localhost:${PORT}`;
+const STALE_USER_TIMEOUT_MS = Number(process.env.STALE_USER_TIMEOUT_MS ?? 15000);
+const STALE_SWEEP_INTERVAL_MS = Number(process.env.STALE_SWEEP_INTERVAL_MS ?? 5000);
 const LOGIN_VIEW_PATH = path.resolve('./public/login.html');
 const APP_VIEW_PATH = path.resolve('./public/index.html');
+
+function buildLocationKey(latitude, longitude) {
+    return `${latitude}:${longitude}`;
+}
 
 async function connectMongoDB() {
     if (!DB_URL) {
@@ -74,6 +80,94 @@ async function main() {
 
     io.attach(server);
 
+    const activeUsers = new Map();
+
+    function getUserState(user) {
+        const existingUserState = activeUsers.get(user.userId);
+
+        if (existingUserState) {
+            return existingUserState;
+        }
+
+        const createdUserState = {
+            userId: user.userId,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar ?? null,
+            lastSeenAt: Date.now(),
+            lastLocationKey: null,
+            lastLocation: null,
+            sockets: new Set(),
+        };
+
+        activeUsers.set(user.userId, createdUserState);
+        return createdUserState;
+    }
+
+    function snapshotActiveUsers() {
+        return Array.from(activeUsers.values()).map((userState) => ({
+            userId: userState.userId,
+            name: userState.name,
+            email: userState.email,
+            avatar: userState.avatar,
+            lastSeenAt: userState.lastSeenAt,
+            latitude: userState.lastLocation?.latitude ?? null,
+            longitude: userState.lastLocation?.longitude ?? null,
+            timestamp: userState.lastLocation?.timestamp ?? null,
+        }));
+    }
+
+    function unregisterSocketFromUser(socket, reason = 'disconnect') {
+        const userId = socketToUserId.get(socket.id);
+
+        if (!userId) {
+            return;
+        }
+
+        const userState = activeUsers.get(userId);
+
+        socketToUserId.delete(socket.id);
+
+        if (!userState) {
+            return;
+        }
+
+        userState.sockets.delete(socket.id);
+
+        if (userState.sockets.size === 0) {
+            activeUsers.delete(userId);
+            io.emit('server:user:disconnected', { userId, reason });
+        }
+    }
+
+    const socketToUserId = new Map();
+
+    const staleSweepTimer = setInterval(() => {
+        const now = Date.now();
+
+        for (const [userId, userState] of activeUsers.entries()) {
+            const isStale = now - userState.lastSeenAt > STALE_USER_TIMEOUT_MS;
+
+            if (!isStale) {
+                continue;
+            }
+
+            activeUsers.delete(userId);
+
+            for (const socketId of userState.sockets) {
+                socketToUserId.delete(socketId);
+            }
+
+            io.emit('server:user:inactive', {
+                userId,
+                reason: 'stale',
+                lastSeenAt: userState.lastSeenAt,
+            });
+        }
+    }, STALE_SWEEP_INTERVAL_MS);
+
+    staleSweepTimer.unref?.();
+
     const wrapMiddleware = (middleware) => (socket, next) => middleware(socket.request, {}, next);
 
     io.use(wrapMiddleware(sessionMiddleware));
@@ -118,6 +212,11 @@ async function main() {
 
     io.on('connection', async (socket) => {
         const authenticatedUser = socket.request.user;
+        const userState = getUserState(authenticatedUser);
+
+        userState.sockets.add(socket.id);
+        userState.lastSeenAt = Date.now();
+        socketToUserId.set(socket.id, authenticatedUser.userId);
 
         console.log('a user connected', {
             userId: authenticatedUser.userId,
@@ -131,18 +230,41 @@ async function main() {
             avatar: authenticatedUser.avatar,
         });
 
+        socket.emit('server:active-users', snapshotActiveUsers());
+
         socket.on('client:location:update', async (locationData) => {
             const eventUserId = String(locationData?.userId ?? authenticatedUser.userId);
             const latitude = Number(locationData?.latitude);
             const longitude = Number(locationData?.longitude);
+            const timestamp = locationData?.timestamp ?? new Date().toISOString();
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 socket.emit('client:error', { message: 'Invalid latitude or longitude' });
                 return;
             }
 
+            if (locationData?.userId && eventUserId !== authenticatedUser.userId) {
+                socket.emit('client:error', { message: 'Authenticated user mismatch' });
+                return;
+            }
+
+            const locationKey = buildLocationKey(latitude, longitude);
+
+            if (userState.lastLocationKey === locationKey) {
+                socket.emit('client:duplicate', {
+                    userId: authenticatedUser.userId,
+                    latitude,
+                    longitude,
+                });
+                return;
+            }
+
+            userState.lastLocationKey = locationKey;
+            userState.lastLocation = { latitude, longitude, timestamp };
+            userState.lastSeenAt = Date.now();
+
             if (eventUserId !== authenticatedUser.userId) {
-                console.warn('Socket location userId mismatch; using authenticated userId instead', {
+                console.warn('Socket location userId mismatch; ignoring client-provided userId', {
                     eventUserId,
                     authenticatedUserId: authenticatedUser.userId,
                 });
@@ -164,7 +286,7 @@ async function main() {
                         name: authenticatedUser.name,
                         latitude,
                         longitude,
-                        timestamp: new Date().toISOString(),
+                        timestamp,
                     }),
                 }],
             });
@@ -174,6 +296,8 @@ async function main() {
             console.log('user disconnected', {
                 userId: authenticatedUser.userId,
             });
+
+            unregisterSocketFromUser(socket, 'disconnect');
         });
     });
 
@@ -204,6 +328,10 @@ async function main() {
     app.get('/api/me', ensureAuthenticated, (req, res) => {
         const { userId, name, email, avatar, provider } = req.user;
         return res.json({ userId, name, email, avatar, provider });
+    });
+
+    app.get('/api/active-users', ensureAuthenticated, (req, res) => {
+        return res.json(snapshotActiveUsers());
     });
 
     server.listen(PORT, () => {

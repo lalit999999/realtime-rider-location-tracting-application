@@ -218,16 +218,23 @@ The Socket Server consumes messages from Kafka and broadcasts them to frontend c
 
 ```javascript
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("User connected:", socket.request.user.userId);
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log("User disconnected:", socket.request.user.userId);
   });
 });
 
 // Broadcast location updates to all connected clients
 io.emit("location-update", locationData);
 ```
+
+**Current app behavior:**
+
+- authenticated users are identified by `userId`
+- duplicate location updates are ignored when coordinates do not change
+- stale users are removed if they stop sending updates
+- disconnects clean up in-memory user state and remove markers on the frontend
 
 **Workflow:**
 
@@ -567,8 +574,6 @@ socket.on("location-update", (data) => {
 - [Leaflet Map Library](https://leafletjs.com/)
 - [Node.js Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)
 - [KafkaJS Library](https://kafka.js.org/)
-
-
 
 ---
 

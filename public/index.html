@@ -68,6 +68,55 @@
       }).addTo(map);
 
       const remoteMarkers = new Map();
+      const lastRenderedLocation = new Map();
+
+      function removeRemoteMarker(userId) {
+        const marker = remoteMarkers.get(userId);
+
+        if (marker) {
+          map.removeLayer(marker);
+          remoteMarkers.delete(userId);
+        }
+
+        lastRenderedLocation.delete(userId);
+      }
+
+      function renderRemoteLocation(data) {
+        const userId = data.userId ?? data.id;
+        const latitude = Number(data.latitude);
+        const longitude = Number(data.longitude);
+
+        if (
+          !userId ||
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude)
+        ) {
+          console.warn("Ignoring invalid remote location payload", data);
+          return;
+        }
+
+        if (currentUser && userId === currentUser.userId) {
+          return;
+        }
+
+        const locationKey = `${latitude}:${longitude}`;
+
+        if (lastRenderedLocation.get(userId) === locationKey) {
+          return;
+        }
+
+        lastRenderedLocation.set(userId, locationKey);
+
+        if (!remoteMarkers.has(userId)) {
+          const marker = L.marker([latitude, longitude])
+            .addTo(map)
+            .bindPopup(`User: ${userId}`);
+          remoteMarkers.set(userId, marker);
+        } else {
+          const marker = remoteMarkers.get(userId);
+          marker.setLatLng([latitude, longitude]);
+        }
+      }
 
       async function loadAuthenticatedUser() {
         const response = await fetch("/api/me");
@@ -89,27 +138,36 @@
           console.log("Socket authenticated as", user);
         });
 
-        socket.on("server:location:update", (data) => {
-          const markerId = data.userId ?? data.id;
-          const { latitude, longitude } = data;
-          console.log("Received location update from server", {
-            userId: markerId,
-            latitude,
-            longitude,
-          });
-          if (!remoteMarkers.has(markerId)) {
-            const marker = L.marker([latitude, longitude])
-              .addTo(map)
-              .bindPopup(`User: ${markerId}`);
-            remoteMarkers.set(markerId, marker);
-          } else {
-            const marker = remoteMarkers.get(markerId);
-            marker.setLatLng([latitude, longitude]);
+        socket.on("server:active-users", (users) => {
+          if (!Array.isArray(users)) {
+            return;
           }
+
+          users.forEach(renderRemoteLocation);
+        });
+
+        socket.on("server:location:update", (data) => {
+          renderRemoteLocation(data);
         });
 
         socket.on("client:error", ({ message }) => {
           console.error(message);
+        });
+
+        socket.on("client:duplicate", ({ userId, latitude, longitude }) => {
+          console.info("Duplicate location ignored", {
+            userId,
+            latitude,
+            longitude,
+          });
+        });
+
+        socket.on("server:user:disconnected", ({ userId }) => {
+          removeRemoteMarker(userId);
+        });
+
+        socket.on("server:user:inactive", ({ userId }) => {
+          removeRemoteMarker(userId);
         });
       }
 
@@ -147,17 +205,52 @@
         });
       }
       let mycurrentlocation = null;
+      let lastSentLocationKey = null;
       async function main() {
         await loadAuthenticatedUser();
         connectSocket();
 
         setInterval(async () => {
-          const { latitude, longitude } = await getUserCurrentLocation();
+          let latitude;
+          let longitude;
+
+          try {
+            ({ latitude, longitude } = await getUserCurrentLocation());
+          } catch (error) {
+            console.error("Skipping location update:", error.message);
+            return;
+          }
+
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            console.warn("Skipping invalid local location update", {
+              latitude,
+              longitude,
+            });
+            return;
+          }
+
+          const locationKey = `${latitude}:${longitude}`;
+
+          if (lastSentLocationKey === locationKey) {
+            if (!mycurrentlocation) {
+              mycurrentlocation = L.marker([latitude, longitude])
+                .addTo(map)
+                .bindPopup("You are here");
+            } else {
+              mycurrentlocation.setLatLng([latitude, longitude]);
+            }
+
+            return;
+          }
+
+          lastSentLocationKey = locationKey;
+
           socket.emit("client:location:update", {
             userId: currentUser.userId,
             latitude,
             longitude,
           });
+
           if (!mycurrentlocation) {
             mycurrentlocation = L.marker([latitude, longitude])
               .addTo(map)
