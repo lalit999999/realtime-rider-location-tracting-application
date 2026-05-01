@@ -3,6 +3,7 @@ import fs from 'fs';
 import { Kafka } from 'kafkajs';
 
 const broker = process.env.KAFKA_BROKER ?? 'localhost:9092';
+const authMethod = (process.env.KAFKA_AUTH_METHOD ?? '').toLowerCase();
 const kafkaUsername = process.env.KAFKA_USERNAME;
 const kafkaPassword = process.env.KAFKA_PASSWORD;
 const kafkaSaslMechanism = process.env.KAFKA_SASL_MECHANISM ?? 'scram-sha-512';
@@ -44,18 +45,42 @@ function buildSslConfig() {
     return sslConfig;
 }
 
+function resolveAuthMode() {
+    if (authMethod === 'sasl' || authMethod === 'mtls') {
+        return authMethod;
+    }
+
+    if (process.env.KAFKA_SSL_KEY && process.env.KAFKA_SSL_CERT) {
+        return 'mtls';
+    }
+
+    if (kafkaUsername && kafkaPassword) {
+        return 'sasl';
+    }
+
+    return 'none';
+}
+
 const kafkaConfig = {
     clientId: 'chai-code',
     brokers: [broker],
-    ssl: buildSslConfig(),
 };
 
-if (kafkaUsername && kafkaPassword) {
+const resolvedAuthMode = resolveAuthMode();
+
+if (resolvedAuthMode === 'mtls') {
+    kafkaConfig.ssl = buildSslConfig();
+} else if (resolvedAuthMode === 'sasl') {
+    const sslConfig = buildSslConfig();
+
+    kafkaConfig.ssl = sslConfig && typeof sslConfig === 'object' ? sslConfig : true;
     kafkaConfig.sasl = {
         mechanism: kafkaSaslMechanism,
         username: kafkaUsername,
         password: kafkaPassword,
     };
+} else {
+    kafkaConfig.ssl = broker.includes('localhost') ? false : true;
 }
 
 export const kafkaClient = new Kafka(kafkaConfig);

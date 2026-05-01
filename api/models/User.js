@@ -46,8 +46,6 @@ const userSchema = new mongoose.Schema(
     },
 );
 
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ userId: 1 }, { unique: true });
 userSchema.index({ provider: 1, providerId: 1 }, { unique: true });
 
 export const User = mongoose.model('User', userSchema);
