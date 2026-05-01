@@ -7,11 +7,17 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "processor": "node kafka/database-processor.js"
+    "processor": "node api/kafka/database-processor.js"
   },
   "dependencies": {
+    "connect-mongo": "^6.0.0",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-session": "^1.19.0",
     "kafkajs": "^2.2.4",
+    "mongoose": "^9.6.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

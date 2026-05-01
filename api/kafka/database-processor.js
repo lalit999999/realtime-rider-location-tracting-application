@@ -1,13 +1,39 @@
+import 'dotenv/config';
+
 import fs from 'fs/promises';
 import path from 'path';
 
+import mongoose from 'mongoose';
+
+import { LocationEvent } from '../../models/LocationEvent.js';
 import { kafkaClient } from './kafka-client.js';
 
 const TOPIC = 'location-update';
 const GROUP_ID = 'database-processor';
 const historyFilePath = path.resolve('./content/location-history.ndjson');
+const DB_URL = process.env.DB_URL;
 
 const lastSeenByUser = new Map();
+
+async function connectMongoDB() {
+    if (!DB_URL) {
+        throw new Error('DB_URL is not defined in environment variables');
+    }
+
+    mongoose.connection.on('connected', () => {
+        console.log('MongoDB connection established successfully...');
+    });
+
+    mongoose.connection.on('error', (error) => {
+        console.error('MongoDB connection error:', error.message);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+        console.warn('MongoDB connection disconnected');
+    });
+
+    await mongoose.connect(DB_URL);
+}
 
 async function ensureHistoryFile() {
     await fs.mkdir(path.dirname(historyFilePath), { recursive: true });
@@ -51,6 +77,7 @@ async function appendLocationHistory(entry) {
 }
 
 async function startDatabaseProcessor() {
+    await connectMongoDB();
     await ensureHistoryFile();
 
     const KafkaConsumer = kafkaClient.consumer({ groupId: GROUP_ID });
@@ -78,6 +105,26 @@ async function startDatabaseProcessor() {
                 }
 
                 lastSeenByUser.set(locationEvent.id, currentSignature);
+
+                try {
+                    const locationEventDocument = new LocationEvent({
+                        userId: locationEvent.id,
+                        latitude: locationEvent.latitude,
+                        longitude: locationEvent.longitude,
+                        timestamp: new Date(locationEvent.timestamp),
+                        partition,
+                    });
+
+                    await locationEventDocument.save();
+                    console.log('Location event saved to MongoDB', {
+                        userId: locationEvent.id,
+                        partition,
+                        latitude: locationEvent.latitude,
+                        longitude: locationEvent.longitude,
+                    });
+                } catch (dbError) {
+                    console.error('Error saving location event to MongoDB:', dbError.message);
+                }
 
                 const historyRecord = {
                     ...locationEvent,

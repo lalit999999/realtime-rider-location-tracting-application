@@ -299,7 +299,7 @@ init()
 
 // I use Oauth 2.0 for authentication
 
-// write proper detailed prompts for the following TODOs one by one :
+
 1. Create users and location_events model
  create a User model with fields: userId (string), name (string), email (string), passwordHash (string)
  create a LocationEvent model with fields: userId (string), latitude (number), longitude (number), timestamp (Date), partition (number)
