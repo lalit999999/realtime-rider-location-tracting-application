@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import { LocationEvent } from '../models/LocationEvent.js';
 import { kafkaClient } from './kafka-client.js';
 
-const TOPIC = 'location-update';
+const TOPIC = process.env.KAFKA_TOPIC ?? 'location-update';
 const GROUP_ID = 'database-processor';
 const historyFilePath = path.resolve('./content/location-history.ndjson');
 const DB_URL = process.env.DB_URL;
@@ -83,6 +83,13 @@ async function startDatabaseProcessor() {
     const KafkaConsumer = kafkaClient.consumer({ groupId: GROUP_ID });
     await KafkaConsumer.connect();
     console.log('Database processor connected to Kafka successfully...');
+
+    const kafkaAdmin = kafkaClient.admin();
+    await kafkaAdmin.connect();
+    await kafkaAdmin.createTopics({
+        topics: [{ topic: TOPIC, numPartitions: 2 }],
+    });
+    await kafkaAdmin.disconnect();
 
     await KafkaConsumer.subscribe({ topic: TOPIC, fromBeginning: false });
 

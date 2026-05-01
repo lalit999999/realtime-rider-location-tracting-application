@@ -1,5 +1,7 @@
 import { kafkaClient } from './kafka-client.js';
 
+const TOPIC = process.env.KAFKA_TOPIC ?? 'location-update';
+
 
 async function setup() {
     const admin = kafkaClient.admin();
@@ -10,7 +12,7 @@ async function setup() {
     await admin.createTopics({
         topics: [
             {
-                topic: 'location-update',
+                topic: TOPIC,
                 numPartitions: 2,
             }
         ]

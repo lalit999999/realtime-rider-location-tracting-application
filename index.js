@@ -18,6 +18,7 @@ const PORT = Number(process.env.PORT ?? 3300);
 const DB_URL = process.env.DB_URL;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const APP_BASE_URL = process.env.APP_BASE_URL ?? `http://localhost:${PORT}`;
+const KAFKA_TOPIC = process.env.KAFKA_TOPIC ?? 'location-update';
 const STALE_USER_TIMEOUT_MS = Number(process.env.STALE_USER_TIMEOUT_MS ?? 15000);
 const STALE_SWEEP_INTERVAL_MS = Number(process.env.STALE_SWEEP_INTERVAL_MS ?? 5000);
 const LOGIN_VIEW_PATH = path.resolve('./public/login.html');
@@ -191,7 +192,14 @@ async function main() {
     await KafkaConsumer.connect();
     console.log('Kafka consumer connected successfully...');
 
-    await KafkaConsumer.subscribe({ topic: 'location-update', fromBeginning: true });
+    const kafkaAdmin = kafkaClient.admin();
+    await kafkaAdmin.connect();
+    await kafkaAdmin.createTopics({
+        topics: [{ topic: KAFKA_TOPIC, numPartitions: 2 }],
+    });
+    await kafkaAdmin.disconnect();
+
+    await KafkaConsumer.subscribe({ topic: KAFKA_TOPIC, fromBeginning: true });
     KafkaConsumer.run({
         eachMessage: async ({ message, heartbeat }) => {
             const data = JSON.parse(message.value.toString());
@@ -277,7 +285,7 @@ async function main() {
             });
 
             await KafkaProducer.send({
-                topic: 'location-update',
+                topic: KAFKA_TOPIC,
                 messages: [{
                     key: authenticatedUser.userId,
                     value: JSON.stringify({
