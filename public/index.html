@@ -12,42 +12,194 @@
     />
   </head>
   <style>
+    :root {
+      color-scheme: light;
+      --page-bg: #f4f1ea;
+      --surface: #fffdfa;
+      --surface-2: #fbf8f2;
+      --border: #232323;
+      --text: #1f1f1f;
+      --muted: #66625a;
+      --accent: #ece2d3;
+      --accent-strong: #d8c4a8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: "Trebuchet MS", "Comic Sans MS", "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: 12px;
+    }
+
+    .app-shell {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      height: calc(100vh - 24px);
+      border: 3px solid var(--border);
+      border-radius: 28px;
+      padding: 10px;
+      background: var(--surface);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 270px;
+      min-width: 270px;
+      border: 3px solid var(--border);
+      border-radius: 24px;
+      background: linear-gradient(180deg, #fffdf9 0%, #f7f1e7 100%);
+      padding: 20px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      overflow: hidden;
+    }
+
+    .profile-avatar {
+      width: 155px;
+      height: 155px;
+      border: 4px solid var(--border);
+      border-radius: 50%;
+      background: #ffffff;
+      object-fit: cover;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.03);
+      margin-top: 4px;
+    }
+
+    .profile-meta {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 8px 0;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+
+    .profile-meta .label {
+      font-weight: 700;
+      margin-right: 6px;
+    }
+
+    
+
+    .sidebar-footer {
+      margin-top: auto;
+      width: 100%;
+    }
+
+    .logout-btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 13px 16px;
+      border: 3px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface-2);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    .logout-btn:hover {
+      background: var(--accent);
+    }
+
+    .map-panel {
+      flex: 1;
+      min-width: 0;
+      border: 3px solid var(--border);
+      border-radius: 24px;
+      background: #ffffff;
+      overflow: hidden;
+      position: relative;
+    }
+
     #map {
-      height: 100vh;
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-loading {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 20px;
+      pointer-events: none;
+      z-index: 300;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 8px;
+      }
+
+      .app-shell {
+        flex-direction: column;
+        height: auto;
+        min-height: calc(100vh - 16px);
+      }
+
+      .sidebar {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .map-panel {
+        min-height: 65vh;
+      }
     }
   </style>
 
   <body>
-    <div
-      style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 16px;
-        background: #0f172a;
-        color: #e2e8f0;
-        font-family: system-ui, sans-serif;
-        position: sticky;
-        top: 0;
-        z-index: 1000;
-      "
-    >
-      <div>
-        <strong>Live Location Tracking</strong>
-        <div
-          id="userInfo"
-          style="font-size: 12px; color: #94a3b8; margin-top: 4px"
-        >
-          Loading authenticated user...
+    <div class="app-shell">
+      <aside class="sidebar">
+        <img
+          id="userAvatar"
+          class="profile-avatar"
+          src="https://www.gravatar.com/avatar/?d=mp&s=300"
+          alt="User avatar"
+        />
+        <div class="profile-meta">
+          <div>
+            <span class="label">Name:</span>
+            <span id="userName">loading...</span>
+          </div>
+          <div>
+            <span class="label">Email:</span>
+            <span id="userEmail">loading...</span>
+          </div>
         </div>
-      </div>
-      <a
-        href="/logout"
-        style="color: #86efac; text-decoration: none; font-weight: 600"
-        >Logout</a
-      >
+
+        <div class="sidebar-footer">
+          <a class="logout-btn" href="/logout">Logout</a>
+        </div>
+      </aside>
+
+      <main class="map-panel">
+        <div id="map"></div>
+        <div class="map-loading">map</div>
+      </main>
     </div>
-    <div id="map"></div>
     <!-- leaflet script to show map and user location -->
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -63,9 +215,26 @@
 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
+        noWrap: true,
         attribution:
           '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
+
+      map.setMaxBounds([
+        [-85, -180],
+        [85, 180],
+      ]);
+      map.options.worldCopyJump = false;
+
+      const mapLoading = document.querySelector(".map-loading");
+
+      map.whenReady(() => {
+        if (mapLoading) {
+          mapLoading.remove();
+        }
+
+        map.invalidateSize();
+      });
 
       const remoteMarkers = new Map();
       const lastRenderedLocation = new Map();
@@ -127,8 +296,17 @@
         }
 
         currentUser = await response.json();
-        document.getElementById("userInfo").textContent =
-          `${currentUser.name} (${currentUser.email})`;
+
+        const userAvatar = document.getElementById("userAvatar");
+        const userName = document.getElementById("userName");
+        const userEmail = document.getElementById("userEmail");
+
+        userName.textContent = currentUser.name ?? "Unknown user";
+        userEmail.textContent = currentUser.email ?? "Unknown email";
+
+        if (currentUser.avatar) {
+          userAvatar.src = currentUser.avatar;
+        }
       }
 
       function connectSocket() {
