@@ -3,7 +3,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import path from 'path';
 
-import { kafkaClient } from './kafka/kafka-client.js';
+import { kafkaClient } from './api/kafka/kafka-client.js';
 
 async function main() {
     const PORT = process.env.PORT ?? 3300;

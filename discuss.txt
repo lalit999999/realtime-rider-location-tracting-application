@@ -1,0 +1,334 @@
+Live Location Tracker
+
+Web Dev Cohort 2026
+
+Full Stack
+Timeline
+Start: Apr 29, 2026, 11:00 AM
+Due: May 3, 2026, 11:59 PM
+Eval Begins: May 4, 2026, 12:30 AM
+Eval Ends: May 6, 2026, 11:59 PM
+Instructions
+
+Build a real-time live location tracking system where authenticated users can share their current location and see other users moving on a map.
+
+Your system should include:
+
+    OIDC / OAuth 2.0 authentication
+
+    Only logged-in users should be able to share location
+
+    Socket connection should identify the authenticated user
+
+    Browser should send location updates at intervals
+
+    Backend should publish location updates to Kafka
+
+    Kafka consumers should process location events
+
+    Socket server should broadcast live location updates to connected users
+
+    Database processor should consume events and simulate or actually store location history
+
+    Frontend should show users on a map using markers
+
+    Marker position should update when new location comes in
+
+    Users should be able to see live movement of others
+
+    Project should handle basic disconnects, invalid data and duplicate events
+
+Do not treat Kafka as just an extra dependency. Kafka should be part of the actual flow.
+
+Expected flow:
+
+    User logs in
+    User allows location permission
+    Frontend sends location through Socket.IO
+    Socket server receives location
+    Server publishes event to Kafka
+    Kafka consumer receives event
+    Socket server broadcasts update to users
+    Database processor consumes same event for persistence/logging
+
+Think about:
+
+    Why direct DB writes on every socket event can become expensive
+
+    Why Kafka helps in high-throughput location systems
+
+    How rider/customer tracking apps use event streams
+
+    How consumer groups work
+
+    How one consumer can update sockets while another handles database writes
+
+    How user ID should be used instead of only socket ID
+
+    How auth should be connected with socket events
+
+    How frequently location should be sent
+
+    How stale users should be removed from the map
+
+    How location history should be stored or simulated
+
+Submission Instructions
+
+Your submission must include:
+
+    Public GitHub repository link
+
+    YouTube unlisted demo video link
+
+    Live deployed link (if possible)
+
+    Clear README file
+
+Demo video is compulsory.
+
+No Google Drive links for demo videos. Upload the working demo on YouTube as unlisted and submit that link only.
+
+Your demo video should show:
+
+    Login / authentication flow
+
+    Location permission flow
+
+    Live location update on map
+
+    Two browser windows or two users showing real-time updates
+
+Your README should include:
+
+    Project overview
+
+    Tech stack
+
+    Setup steps
+
+    Environment variables
+
+    OIDC auth setup
+
+    Socket event flow
+
+    Kafka event flow
+
+    Demo video link
+
+    Assumptions and limitations
+
+Evaluation Parameters
+Core Functionality (20 Marks)
+
+    User can login
+
+    User can share live location
+
+    Map loads properly
+
+    Other users appear on map
+
+    Markers update when location changes
+
+WebSocket Implementation (15 Marks)
+
+    Socket.IO connection works properly
+
+    Location events are sent from client to server
+
+    Server broadcasts updates correctly
+
+    Disconnect and invalid event handling is present
+
+    Socket is linked with authenticated user identity
+
+Kafka Implementation (25 Marks)
+
+    Kafka producer is used correctly
+
+    Kafka consumer is used correctly
+
+    location-updates topic is used meaningfully
+
+    Consumer groups are understood
+
+    Kafka is actually part of the location update flow
+
+Database Processor / Persistence Thinking (15 Marks)
+
+    Separate processor consumes location events
+
+    Student explains DB write strategy
+
+    Location history is stored, simulated or clearly designed
+
+    They understand why every socket event should not directly become a heavy DB write
+
+OIDC / OAuth 2.0 Auth (15 Marks)
+
+    Auth flow is implemented
+
+    Protected socket actions are handled
+
+    User identity is available in backend
+
+    Location updates are tied to user ID
+
+    Tokens/session handling is understandable
+
+Frontend Map Experience (10 Marks)
+
+    Leaflet map works properly
+
+    Markers are created and updated cleanly
+
+    Current user and other users are understandable
+
+    UI is usable and not broken
+
+Code Quality (10 Marks)
+
+    Clean project structure
+
+    Good naming
+
+    Proper error handling
+
+    Environment variables used
+
+    Code is readable and explainable
+
+Demo Video (10 Marks)
+
+    YouTube unlisted link submitted
+
+    Working project is shown
+
+    Kafka, socket, auth and map flow are explained
+
+    Student clearly explains their own implementation
+
+README and Submission Quality (10 Marks)
+
+    README is complete
+
+    Setup instructions work
+
+    .env.example is provided
+
+    Repo is organized
+
+    Links are valid
+
+System Understanding (10 Marks)
+
+    Student understands high-throughput systems
+
+    Kafka usage is justified
+
+    Tradeoffs are explained
+
+    System feels practical, not just copied code
+
+
+
+
+
+
+
+Checklist - What's Implemented vs Missing:
+
+Requirement	                        Status	                Notes
+Location History Storage            ❌ MISSING	           No database setup
+User Authentication in Socket	    ❌ MISSING	           Uses socket.id, not user ID
+Protected Actions	                ❌ MISSING	           No auth checks on socket events
+Error Handling	                    ⚠️ Minimal	            Very basic
+Disconnect Handling	                ❌ MISSING	           No cleanup
+Duplicate Event Handling	        ❌ MISSING	           No deduplication logic
+Stale User Removal	                ❌ MISSING	           Markers never cleared
+README	                            ❌ MISSING	           No documentation
+Environment Variables	            ❌ MISSING	           No .env.example
+
+
+
+
+
+database-processor.js
+
+import { kafkaClient } from "./kafka-client";
+
+async function init() {
+    const KafkaConsumer = kafkaClient.consumer({ groupId: 'database-processor' });
+    await KafkaConsumer.connect();
+    console.log('Kafka consumer connected successfully...');
+
+    await KafkaConsumer.subscribe({ topic: 'location-update', fromBeginning: true });
+    KafkaConsumer.run({
+        eachMessage: async ({ topic, partition, message, heartbeat }) => {
+            const data = JSON.parse(message.value.toString());
+            console.log('Received message from Kafka', { data });
+            console.log("INSERT INTO DB");
+
+            // // ✅ SAVE TO DATABASE - This is the whole point!
+            // await LocationHistory.create({
+            //     userId: locationData.userId,
+            //     latitude: locationData.latitude,
+            //     longitude: locationData.longitude,
+            //     timestamp: new Date(),
+            //     partition: partition
+            // });
+            // console.log('✅ Location saved to DB', locationData.userId);
+
+
+
+            await heartbeat();
+        }
+    });
+}
+
+init()
+
+
+
+
+// db connection code X
+// db processor insert 
+
+
+// I use Oauth 2.0 for authentication
+
+// write proper detailed prompts for the following TODOs one by one :
+1. Create users and location_events model
+ create a User model with fields: userId (string), name (string), email (string), passwordHash (string)
+ create a LocationEvent model with fields: userId (string), latitude (number), longitude (number), timestamp (Date), partition (number)
+
+
+2. Connect MongoDB properly in the processor
+// Use mongoose to connect to MongoDB using the DB_URL from environment variables
+// Handle connection success and error cases
+// Ensure that the connection is established before consuming Kafka messages
+
+
+3. Store Kafka events in DB
+// In the eachMessage handler, after parsing the message, create a new LocationEvent document and save it to the database
+// Log success or error of the database save operation
+
+4. Add authentication ( Oauth 2.0 login woth google only ) to the system
+// Implement OIDC / OAuth 2.0 authentication using a library like Passport.js
+// Set up Google as an authentication provider
+// Create login routes and views
+// Ensure that only authenticated users can access the main application page
+
+5. Pass auth user id into socket events
+// When a user logs in, store their user ID 
+// When the client emits location updates, include the authenticated user ID in the event data
+// On the server side, extract the user ID from the socket event data and use it for processing and storing location updates instead of socket.id   
+
+
+6. Replace socket.id with authenticated userId
+// In the socket event handlers, use the authenticated user ID instead of socket.id for identifying users
+// This will allow you to link location updates to specific users in the database and when broadcasting updates to other clients
+
+
