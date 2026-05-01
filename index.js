@@ -10,28 +10,58 @@ async function main() {
 
     const app = express();
     const server = http.createServer(app);
-    const io = new Server();
+    const io = new Server(server, {
+        cors: {
+            origin: "*",
+            methods: ["GET", "POST"]
+        }
+    });
+    io.attach(server);
 
-    // kafka setup
+
+
+
+    // kafka producer setup
     const KafkaProducer = kafkaClient.producer();
     await KafkaProducer.connect();
     console.log('Kafka producer connected successfully...');
-    io.attach(server);
+
+    // kafka consumer setup
+    const KafkaConsumer = kafkaClient.consumer({ groupId: `socket-server-${PORT}` });
+    await KafkaConsumer.connect();
+    console.log('Kafka consumer connected successfully...');
+
+    await KafkaConsumer.subscribe({ topic: 'location-update', fromBeginning: true });
+    KafkaConsumer.run({
+        eachMessage: async ({ topic, partition, message, heartbeat }) => {
+            const data = JSON.parse(message.value.toString());
+            console.log('Received message from Kafka', { data });
+            io.emit('server:location:update', {
+                id: data.id,
+                latitude: data.latitude,
+                longitude: data.longitude
+            });
+            await heartbeat();
+        }
+    });
 
     io.on('connection', async (socket) => {
         console.log('a user connected', { id: socket.id });
-        socket.on('client:location:update', (LocationData) => {
+
+        socket.on('client:location:update', async (LocationData) => {
             const { latitude, longitude } = LocationData;
+
             console.log('Received location update from client', { id: socket.id, LocationData });
-        });
-        await KafkaProducer.send({
-            topic: 'location-update',
-            messages: [{
-                key: socket.id,
-                value: JSON.stringify({ id: socket.id, latitude, longitude })
-            }]
+            await KafkaProducer.send({
+                topic: 'location-update',
+                messages: [{
+                    key: socket.id,
+                    value: JSON.stringify({ id: socket.id, latitude, longitude })
+                }]
+            });
         });
     });
+
 
     app.use(express.static(path.resolve('./public')));
 

@@ -31,7 +31,6 @@
     <script>
       // socket
       const socket = io();
-
       var map = L.map("map").setView([28.6139, 77.209], 13);
 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -40,42 +39,74 @@
           '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
 
-      function getUserCurrentLocation() {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            function (position) {
-              var lat = position.coords.latitude;
-              var lng = position.coords.longitude;
-              var marker = L.marker([lat, lng]).addTo(map);
-              res({ latitude: lat, longitude: lng });
-            },
-            (error) => {
-              alert("Error getting location: " + error.message);
-            },
-            {
-              enableHighAccuracy: true,
-            },
-          );
+      const remoteMarkers = new Map();
+
+      socket.on("server:location:update", (data) => {
+        const { id, latitude, longitude } = data;
+        console.log("Received location update from server", {
+          id,
+          latitude,
+          longitude,
+        });
+        if (!remoteMarkers.has(id)) {
+          const marker = L.marker([latitude, longitude])
+            .addTo(map)
+            .bindPopup(`User: ${id}`);
+          remoteMarkers.set(id, marker);
         } else {
-          alert("Geolocation is not supported by this browser.");
+          const marker = remoteMarkers.get(id);
+          marker.setLatLng([latitude, longitude]);
         }
+      });
+
+      function getUserCurrentLocation() {
+        return new Promise((resolve, reject) => {
+          if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                const { latitude, longitude } = position.coords;
+                console.log("Current location obtained", {
+                  latitude,
+                  longitude,
+                });
+                // where i emit the location to server
+                
+                resolve({ latitude, longitude }); // ✅ Resolve the Promise
+              },
+              (error) => {
+                console.error("Error obtaining location", error);
+                alert(
+                  "Unable to retrieve your location. Please allow location access and try again.",
+                );
+                reject(new Error("Unable to retrieve location")); // ✅ Reject the Promise
+              },
+              {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0,
+              },
+            );
+          } else {
+            alert("Geolocation is not supported by your browser");
+            reject(new Error("Geolocation not supported")); // ✅ Reject if not supported
+          }
+        });
       }
       let mycurrentlocation = null;
       async function main() {
         setInterval(async () => {
-          const { latitude, longitude } = await getUserCurrentLocation();
-          socket.emit("client:location :update", { latitude, longitude });
+          const { latitude, longitude }  = await getUserCurrentLocation();
+          socket.emit("client:location:update", { latitude, longitude });
           if (!mycurrentlocation) {
             mycurrentlocation = L.marker([latitude, longitude])
               .addTo(map)
-              .bindPopup("You are here")
-              .openPopup();
+              .bindPopup("You are here");
           } else {
             mycurrentlocation.setLatLng([latitude, longitude]);
           }
         }, 5 * 1000);
-      }
-      window.onload = main;
+      };
+     window.addEventListener("load", main);
     </script>
   </body>
 </html>
