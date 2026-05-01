@@ -18,7 +18,35 @@
   </style>
 
   <body>
-    <h1>heloo</h1>
+    <div
+      style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: system-ui, sans-serif;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+      "
+    >
+      <div>
+        <strong>Live Location Tracking</strong>
+        <div
+          id="userInfo"
+          style="font-size: 12px; color: #94a3b8; margin-top: 4px"
+        >
+          Loading authenticated user...
+        </div>
+      </div>
+      <a
+        href="/logout"
+        style="color: #86efac; text-decoration: none; font-weight: 600"
+        >Logout</a
+      >
+    </div>
     <div id="map"></div>
     <!-- leaflet script to show map and user location -->
     <script
@@ -29,8 +57,8 @@
     <!-- script for socket IO -->
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      // socket
-      const socket = io();
+      let currentUser = null;
+      let socket = null;
       var map = L.map("map").setView([28.6139, 77.209], 13);
 
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -41,23 +69,49 @@
 
       const remoteMarkers = new Map();
 
-      socket.on("server:location:update", (data) => {
-        const { id, latitude, longitude } = data;
-        console.log("Received location update from server", {
-          id,
-          latitude,
-          longitude,
-        });
-        if (!remoteMarkers.has(id)) {
-          const marker = L.marker([latitude, longitude])
-            .addTo(map)
-            .bindPopup(`User: ${id}`);
-          remoteMarkers.set(id, marker);
-        } else {
-          const marker = remoteMarkers.get(id);
-          marker.setLatLng([latitude, longitude]);
+      async function loadAuthenticatedUser() {
+        const response = await fetch("/api/me");
+
+        if (!response.ok) {
+          window.location.href = "/login";
+          throw new Error("Unable to load authenticated user");
         }
-      });
+
+        currentUser = await response.json();
+        document.getElementById("userInfo").textContent =
+          `${currentUser.name} (${currentUser.email})`;
+      }
+
+      function connectSocket() {
+        socket = io();
+
+        socket.on("user:authenticated", (user) => {
+          console.log("Socket authenticated as", user);
+        });
+
+        socket.on("server:location:update", (data) => {
+          const markerId = data.userId ?? data.id;
+          const { latitude, longitude } = data;
+          console.log("Received location update from server", {
+            userId: markerId,
+            latitude,
+            longitude,
+          });
+          if (!remoteMarkers.has(markerId)) {
+            const marker = L.marker([latitude, longitude])
+              .addTo(map)
+              .bindPopup(`User: ${markerId}`);
+            remoteMarkers.set(markerId, marker);
+          } else {
+            const marker = remoteMarkers.get(markerId);
+            marker.setLatLng([latitude, longitude]);
+          }
+        });
+
+        socket.on("client:error", ({ message }) => {
+          console.error(message);
+        });
+      }
 
       function getUserCurrentLocation() {
         return new Promise((resolve, reject) => {
@@ -70,7 +124,7 @@
                   longitude,
                 });
                 // where i emit the location to server
-                
+
                 resolve({ latitude, longitude }); // ✅ Resolve the Promise
               },
               (error) => {
@@ -94,9 +148,16 @@
       }
       let mycurrentlocation = null;
       async function main() {
+        await loadAuthenticatedUser();
+        connectSocket();
+
         setInterval(async () => {
-          const { latitude, longitude }  = await getUserCurrentLocation();
-          socket.emit("client:location:update", { latitude, longitude });
+          const { latitude, longitude } = await getUserCurrentLocation();
+          socket.emit("client:location:update", {
+            userId: currentUser.userId,
+            latitude,
+            longitude,
+          });
           if (!mycurrentlocation) {
             mycurrentlocation = L.marker([latitude, longitude])
               .addTo(map)
@@ -105,8 +166,8 @@
             mycurrentlocation.setLatLng([latitude, longitude]);
           }
         }, 5 * 1000);
-      };
-     window.addEventListener("load", main);
+      }
+      window.addEventListener("load", main);
     </script>
   </body>
 </html>

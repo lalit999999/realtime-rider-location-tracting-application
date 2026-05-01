@@ -82,6 +82,7 @@ async function main() {
     io.use((socket, next) => {
         if (socket.request.isAuthenticated?.() && socket.request.user) {
             socket.data.user = socket.request.user;
+            socket.data.userId = socket.request.user.userId;
             return next();
         }
 
@@ -119,7 +120,6 @@ async function main() {
         const authenticatedUser = socket.request.user;
 
         console.log('a user connected', {
-            socketId: socket.id,
             userId: authenticatedUser.userId,
             email: authenticatedUser.email,
         });
@@ -132,6 +132,7 @@ async function main() {
         });
 
         socket.on('client:location:update', async (locationData) => {
+            const eventUserId = String(locationData?.userId ?? authenticatedUser.userId);
             const latitude = Number(locationData?.latitude);
             const longitude = Number(locationData?.longitude);
 
@@ -140,9 +141,15 @@ async function main() {
                 return;
             }
 
+            if (eventUserId !== authenticatedUser.userId) {
+                console.warn('Socket location userId mismatch; using authenticated userId instead', {
+                    eventUserId,
+                    authenticatedUserId: authenticatedUser.userId,
+                });
+            }
+
             console.log('Received location update from client', {
                 userId: authenticatedUser.userId,
-                socketId: socket.id,
                 latitude,
                 longitude,
             });
@@ -165,7 +172,6 @@ async function main() {
 
         socket.on('disconnect', () => {
             console.log('user disconnected', {
-                socketId: socket.id,
                 userId: authenticatedUser.userId,
             });
         });

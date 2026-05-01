@@ -5,7 +5,7 @@ import path from 'path';
 
 import mongoose from 'mongoose';
 
-import { LocationEvent } from '../../models/LocationEvent.js';
+import { LocationEvent } from '../models/LocationEvent.js';
 import { kafkaClient } from './kafka-client.js';
 
 const TOPIC = 'location-update';
