@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "processor": "node api/kafka/database-processor.js"
+    "processor": "node api/kafka/database-processor.js",
+    "integration-test": "node scripts/integration-test.js"
   },
   "dependencies": {
     "connect-mongo": "^6.0.0",
