@@ -154,16 +154,20 @@
       .app-shell {
         flex-direction: column;
         height: auto;
-        min-height: calc(100vh - 16px);
+        min-height: 100vh;
       }
 
       .sidebar {
         width: 100%;
         min-width: 0;
+        flex-shrink: 0;
+        max-height: 35vh;
+        overflow-y: auto;
       }
 
       .map-panel {
-        min-height: 65vh;
+        flex: 1;
+        min-height: 60vh;
       }
     }
   </style>
@@ -231,35 +235,54 @@
     <script>
       let currentUser = null;
       let socket = null;
-      var map = L.map("map").setView([28.6139, 77.209], 13);
+      let map = null;
 
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        noWrap: true,
-        attribution:
-          '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(map);
+      function initializeMap() {
+        if (map) return; // already initialized
 
-      map.setMaxBounds([
-        [-85, -180],
-        [85, 180],
-      ]);
-      map.options.worldCopyJump = false;
-
-      const mapLoading = document.querySelector(".map-loading");
-
-      map.whenReady(() => {
-        if (mapLoading) {
-          mapLoading.remove();
+        const mapContainer = document.getElementById("map");
+        if (!mapContainer) {
+          console.error("Map container #map not found");
+          return;
         }
 
-        map.invalidateSize();
-      });
+        map = L.map("map").setView([28.6139, 77.209], 13);
+
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          noWrap: true,
+          attribution:
+            '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        }).addTo(map);
+
+        map.setMaxBounds([
+          [-85, -180],
+          [85, 180],
+        ]);
+        map.options.worldCopyJump = false;
+
+        const mapLoading = document.querySelector(".map-loading");
+
+        map.whenReady(() => {
+          if (mapLoading) {
+            mapLoading.remove();
+          }
+
+          map.invalidateSize();
+        });
+
+        // trigger initial size calculation
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 100);
+      }
 
       const remoteMarkers = new Map();
       const lastRenderedLocation = new Map();
 
       function removeRemoteMarker(userId) {
+        if (!map) return;
+
         const marker = remoteMarkers.get(userId);
 
         if (marker) {
@@ -271,6 +294,8 @@
       }
 
       function renderRemoteLocation(data) {
+        if (!map) return; // map not yet initialized
+
         const userId = data.userId ?? data.id;
         const latitude = Number(data.latitude);
         const longitude = Number(data.longitude);
@@ -331,6 +356,27 @@
 
       function connectSocket() {
         socket = io();
+
+        socket.on("connect", () => {
+          console.log("Socket connected successfully");
+          showLocationStatus("Connected to server", false);
+        });
+
+        socket.on("connect_error", (error) => {
+          console.error("Socket connection error:", error);
+          showLocationStatus(
+            "Connection error: " + (error.message || "Unknown error"),
+            true,
+          );
+        });
+
+        socket.on("disconnect", (reason) => {
+          console.warn("Socket disconnected:", reason);
+          showLocationStatus(
+            "Disconnected from server. Reconnecting...",
+            false,
+          );
+        });
 
         socket.on("user:authenticated", (user) => {
           console.log("Socket authenticated as", user);
@@ -403,11 +449,18 @@
           return;
         }
 
+        if (!map) {
+          showLocationStatus("Map is not yet initialized", true);
+          return;
+        }
+
         clearLocationStatus();
 
         watchId = navigator.geolocation.watchPosition(
           (position) => {
             const { latitude, longitude } = position.coords;
+            console.log("Location updated:", { latitude, longitude });
+            showLocationStatus("Location acquired ✓", false);
             // update marker and emit only when location changed
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
               return;
@@ -459,7 +512,7 @@
             } else if (error.code === 3) {
               // TIMEOUT
               showLocationStatus(
-                "Unable to get location (timeout). Will retry shortly.",
+                "Getting GPS location... (this may take 20-30 seconds on first use)",
               );
               // keep watching; browser will attempt again
             } else {
@@ -469,7 +522,7 @@
           {
             enableHighAccuracy: true,
             maximumAge: 0,
-            timeout: 10 * 1000,
+            timeout: 30 * 1000,
           },
         );
       }
@@ -483,7 +536,9 @@
           return;
         }
 
-        showLocationStatus("Requesting location permission...");
+        showLocationStatus(
+          "Requesting location permission... (may take up to 30 seconds)",
+        );
         navigator.geolocation.getCurrentPosition(
           (position) => {
             clearLocationStatus();
@@ -499,16 +554,27 @@
               );
               const btn = document.getElementById("enableLocationBtn");
               if (btn) btn.style.display = "inline-block";
+            } else if (error.code === 3) {
+              showLocationStatus(
+                "GPS timeout. Try again or move to open area.",
+                true,
+              );
+              const btn = document.getElementById("enableLocationBtn");
+              if (btn) btn.style.display = "inline-block";
             } else {
               showLocationStatus("Unable to retrieve your location.", true);
             }
           },
-          { enableHighAccuracy: true, timeout: 10 * 1000, maximumAge: 0 },
+          { enableHighAccuracy: true, timeout: 30 * 1000, maximumAge: 0 },
         );
       }
 
       async function main() {
         await loadAuthenticatedUser();
+
+        // Initialize map after DOM is ready
+        initializeMap();
+
         connectSocket();
 
         const enableBtn = document.getElementById("enableLocationBtn");
@@ -557,6 +623,22 @@
       }
 
       window.addEventListener("load", main);
+
+      // handle map resize on orientation change
+      window.addEventListener("orientationchange", () => {
+        if (map) {
+          setTimeout(() => {
+            map.invalidateSize();
+          }, 100);
+        }
+      });
+
+      // handle window resize
+      window.addEventListener("resize", () => {
+        if (map) {
+          map.invalidateSize();
+        }
+      });
     </script>
   </body>
 </html>

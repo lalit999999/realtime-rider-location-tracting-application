@@ -1,8 +1,5 @@
 import 'dotenv/config';
 
-import fs from 'fs/promises';
-import path from 'path';
-
 import mongoose from 'mongoose';
 
 import { LocationEvent } from '../models/LocationEvent.js';
@@ -10,7 +7,8 @@ import { kafkaClient } from './kafka-client.js';
 
 const TOPIC = process.env.KAFKA_TOPIC ?? 'location-update';
 const GROUP_ID = 'database-processor';
-const historyFilePath = path.resolve('./content/location-history.ndjson');
+// Previously this processor appended events to a public NDJSON file.
+// That behavior has been removed for privacy — events are persisted in MongoDB only.
 const DB_URL = process.env.DB_URL;
 
 const lastSeenByUser = new Map();
@@ -35,15 +33,7 @@ async function connectMongoDB() {
     await mongoose.connect(DB_URL);
 }
 
-async function ensureHistoryFile() {
-    await fs.mkdir(path.dirname(historyFilePath), { recursive: true });
-
-    try {
-        await fs.access(historyFilePath);
-    } catch {
-        await fs.writeFile(historyFilePath, '', 'utf8');
-    }
-}
+// removed: ensureHistoryFile() — no on-disk public history
 
 function parseLocationMessage(messageValue) {
     if (!messageValue) {
@@ -72,13 +62,13 @@ function parseLocationMessage(messageValue) {
 }
 
 async function appendLocationHistory(entry) {
-    const line = `${JSON.stringify(entry)}\n`;
-    await fs.appendFile(historyFilePath, line, 'utf8');
+    // No-op: retained function for backward-compatibility with callers,
+    // but we no longer write sensitive location history to a public file.
+    return;
 }
 
 async function startDatabaseProcessor() {
     await connectMongoDB();
-    await ensureHistoryFile();
 
     const KafkaConsumer = kafkaClient.consumer({ groupId: GROUP_ID });
     await KafkaConsumer.connect();
@@ -133,14 +123,8 @@ async function startDatabaseProcessor() {
                     console.error('Error saving location event to MongoDB:', dbError.message);
                 }
 
-                const historyRecord = {
-                    ...locationEvent,
-                    partition,
-                    receivedAt: new Date().toISOString(),
-                };
-
-                await appendLocationHistory(historyRecord);
-                console.log('Stored location history event', historyRecord);
+                // Location event already saved to MongoDB above.
+                // Do NOT write location events to public files to avoid data leakage.
                 await heartbeat();
             } catch (error) {
                 console.error('Error processing Kafka location event:', error.message);

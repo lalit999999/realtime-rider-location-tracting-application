@@ -74,3 +74,6 @@ coverage/
 .env.example (unless you want to commit a template)
 dist/
 build/
+
+# Ignore location history NDJSON (do not commit sensitive location data)
+content/*.ndjson
