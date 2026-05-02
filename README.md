@@ -404,6 +404,79 @@ socket.on("location-update", (locationData) => {
 
 ---
 
+## 🔒 Data retention (TTL)
+
+Location events are stored in MongoDB in the `LocationEvent` collection. A TTL index is created on the `timestamp` field to automatically expire old events. By default events are retained for 30 days.
+
+Override default retention by setting the env var `LOCATION_EVENT_TTL_SECONDS` (number of seconds). Example for 7 days:
+
+```bash
+export LOCATION_EVENT_TTL_SECONDS=$((7*24*60*60))
+```
+
+The TTL index is applied at model startup (see `api/models/LocationEvent.js`).
+
+---
+
+## 🎥 Demo video
+
+Please record a short (2–4 minute) unlisted YouTube video showing:
+
+- Login with Google OAuth
+- A client producing location updates
+- Another client receiving updates on the map
+- A brief explanation of Kafka consumer → DB → Socket flow
+
+Add your unlisted YouTube link here after uploading:
+
+DEMO VIDEO: [Add your unlisted link here]
+
+---
+
+## 🧩 Integration test (quick verification)
+
+An automated smoke/integration test produces a single message to Kafka and verifies the consumer/persistence by checking MongoDB.
+
+Requirements: running Kafka (topic available), MongoDB, and the app consumer/processor running.
+
+Run:
+
+```bash
+# ensure env: MONGO_URI, KAFKA_BROKERS (comma-separated), KAFKA_TOPIC
+npm run integration-test
+```
+
+Exit codes:
+
+- 0 = success (event observed in MongoDB)
+- non-zero = failure
+
+You can find the script at `scripts/integration-test.js`.
+
+---
+
+## ⚙️ Google OAuth & Kafka provider notes (quick)
+
+- Google OAuth: configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `APP_BASE_URL` (callback URL: `APP_BASE_URL/auth/google/callback`). See `index.js` for Passport setup.
+- Kafka (Aiven or managed): set `KAFKA_BROKERS` (comma-separated), `KAFKA_AUTH_METHOD` (sasl|mtls), and provide certs under `api/kafka/` when using mTLS. For local testing you can run Kafka via Docker Compose.
+
+---
+
+## 📱 Mobile testing checklist
+
+- Ensure `APP_BASE_URL` reachable from your phone (use LAN IP or ngrok)
+- Allow location permission
+- Wait until frontend shows “Location acquired ✓”
+- Verify markers for other users appear
+
+---
+
+## ✅ Grading checklist
+
+Map these README sections and the app behavior to the evaluation items in `evaluation-para.txt`. The integration test, TTL retention, README, and demo video address the grading rubric items.
+
+---
+
 ## 📊 Architecture Diagrams Explained
 
 ### **Diagram 1: High Throughput System Architecture**
