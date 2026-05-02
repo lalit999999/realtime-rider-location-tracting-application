@@ -48,9 +48,11 @@ Optional / Kafka auth:
 - Place cert files under `api/kafka/` when using mTLS: `ca.pem`, `service.cert`, `service.key`
 
 Retention:
+
 - `LOCATION_EVENT_TTL_SECONDS` — TTL in seconds for `LocationEvent.timestamp` (default 30 days = 2592000)
 
 OAuth (if used):
+
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 
 Make a `.env` file or export these in your shell for local testing.
@@ -122,7 +124,6 @@ Manual checks:
 ## Troubleshooting (common issues)
 
 - ECONNREFUSED / Kafka connection errors
-
   - Cause: Kafka not running, wrong broker address, or Docker publishing issue.
   - Quick checks:
 
@@ -137,10 +138,9 @@ nc -vz localhost 9092
 docker logs kafka --tail 200
 ```
 
-  - If using a managed Kafka (Aiven), ensure `KAFKA_BROKERS` are the advertised endpoints and configure mTLS/SASL as required.
+- If using a managed Kafka (Aiven), ensure `KAFKA_BROKERS` are the advertised endpoints and configure mTLS/SASL as required.
 
 - MongoDB connection errors
-
   - Ensure `MONGO_URI` is correct and MongoDB is reachable.
   - Use `mongosh` or `mongo` to test connectivity.
 
@@ -171,4 +171,3 @@ If you'd like, I can now:
 DEMO VIDEO: [Add your unlisted link here]
 
 Author: Lalit Gujar — Cohort 2026
-
