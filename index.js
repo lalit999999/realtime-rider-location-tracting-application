@@ -13,6 +13,7 @@ import { ensureAuthenticated } from './api/auth/middleware.js';
 import { configurePassport, passport } from './api/auth/passport.js';
 import { createAuthRouter } from './api/auth/routes.js';
 import { kafkaClient } from './api/kafka/kafka-client.js';
+import { LocationEvent } from './api/models/LocationEvent.js';
 
 const PORT = Number(process.env.PORT ?? 3300);
 const DB_URL = process.env.DB_URL;
@@ -340,6 +341,41 @@ async function main() {
 
     app.get('/api/active-users', ensureAuthenticated, (req, res) => {
         return res.json(snapshotActiveUsers());
+    });
+
+    // Authenticated endpoint to return recent location history for the requesting user.
+    // Query params:
+    // - userId (optional): if provided must match authenticated user
+    // - limit (optional): max number of events (default 200, max 2000)
+    // - since (optional): ISO timestamp to filter events after that time
+    app.get('/api/locations', ensureAuthenticated, async (req, res) => {
+        try {
+            const requestedUserId = req.query.userId;
+            const limit = Math.min(Number(req.query.limit) || 200, 2000);
+            const since = req.query.since ? new Date(req.query.since) : null;
+
+            // Restrict access: users can only fetch their own location history
+            const allowedUserId = req.user.userId;
+            if (requestedUserId && String(requestedUserId) !== String(allowedUserId)) {
+                return res.status(403).json({ message: 'Forbidden: can only access your own history' });
+            }
+
+            const filter = { userId: String(allowedUserId) };
+            if (since && !Number.isNaN(since.getTime())) {
+                filter.timestamp = { $gte: since };
+            }
+
+            const events = await LocationEvent.find(filter)
+                .sort({ timestamp: -1 })
+                .limit(limit)
+                .lean()
+                .exec();
+
+            return res.json({ userId: allowedUserId, count: events.length, events });
+        } catch (err) {
+            console.error('Error fetching locations:', err);
+            return res.status(500).json({ message: 'Internal server error' });
+        }
     });
 
     server.listen(PORT, () => {
